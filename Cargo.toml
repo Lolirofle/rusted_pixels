@@ -3,6 +3,18 @@ name = "rusted_pixels"
 version = "0.1.0"
 authors = ["Jesper Fridefors <jesper.fridefors@gmail.com>"]
 
+[dependencies]
+epoxy = "*"
+gdk = "*"
+gl = "*"
+glium = "*"
+libc = "*"
+shared_library = "*"
+
+[dependencies.gtk]
+version = "*"
+features = ["v3_16"]
+
 [dependencies.png]
 git = "https://github.com/Lolirofle/image-png"
 

@@ -89,7 +89,7 @@ pub fn execute_command(state: &mut State) -> CommandResult {
     match interpret_input(&state.input) {
         Ok(command) => match command {
             Command::ExportPng => {
-                state.images[0].save_png_image("test_out.png").unwrap();
+                state.images[0].save_png_image("tmp/test_out.png").unwrap();
                 println!("exported png");
                 clean_input_and_args(state);
                 CommandResult::Success

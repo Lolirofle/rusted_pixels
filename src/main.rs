@@ -1,5 +1,12 @@
-extern crate sdl2;
+extern crate core;
+extern crate epoxy;
+extern crate gl;
+extern crate glium;
+extern crate gtk;
+extern crate libc;
 extern crate png;
+extern crate sdl2;
+extern crate shared_library;
 
 use sdl2::pixels::Color;
 use sdl2::event::Event;
@@ -8,18 +15,101 @@ use sdl2::render::BlendMode;
 use sdl2::mouse::Mouse;
 use std::path;
 
-pub mod image_buffer;
-pub mod windows;
-pub mod state;
-pub mod input;
+mod glium_ext;
+mod image_buffer;
+mod input;
+mod state;
+mod windows;
 
-use input::*;
+use core::cell::RefCell;
+use core::ptr;
+use glium::Surface;
+use gtk::prelude::*;
+use shared_library::dynamic_library::DynamicLibrary;
+use std::rc::Rc;
 
 use image_buffer::ImageBuffer;
+use input::*;
 use state::State;
 use windows::*;
 
 pub fn main() {
+    if let Ok(_) = gtk::init().is_err(){
+        let window = gtk::Window::new(gtk::WindowType::Toplevel);
+
+        window.set_title("Rusted Pixels");
+        window.set_border_width(4);
+        window.set_position(gtk::WindowPosition::Center);
+        window.set_default_size(800,600);
+        window.connect_key_press_event(|_,event_key|{
+            println!("{:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode());
+            Inhibit(false)
+        });
+        window.connect_delete_event(|_,_|{
+            gtk::main_quit();
+            Inhibit(false)
+        });
+
+
+        let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
+        window.add(&paned);
+
+        let button = gtk::Button::new_with_label("Click me!");
+        paned.add1(&button);
+
+        let image_area = gtk::GLArea::new();
+            epoxy::load_with(|s| {
+                unsafe {
+                    match DynamicLibrary::open(None).unwrap().symbol(s) {
+                        Ok(v) => v,
+                        Err(_) => ptr::null(),
+                    }
+                }
+            });
+
+            image_area.connect_realize(|widget|{
+                widget.make_current();
+            });
+
+            let display: Rc<RefCell<Option<glium_ext::GtkFacade>>> = Rc::new(RefCell::new(None));
+            let display2 = display.clone();
+            image_area.connect_realize(move |widget|{
+                let mut display = display2.borrow_mut();
+                *display = Some(
+                    glium_ext::GtkFacade{
+                        context: unsafe{
+                            glium::backend::Context::new::<_,()>(
+                                glium_ext::GtkBackend{gl_area: widget.clone()},
+                                true,
+                                Default::default()
+                            )
+                        }.unwrap(),
+                    }
+                );
+            });
+
+            let display2 = display.clone();
+            image_area.connect_render(move |_, _|{
+                let display = display2.borrow();
+                let display = display.as_ref().unwrap();
+
+                let mut target = display.draw();
+                target.clear_color(0.7, 0.3, 0.3, 1.0);
+                //target.draw(&vertex_buffer, &indices, &program, &glium::uniforms::EmptyUniforms,&Default::default()).unwrap();
+                target.finish().unwrap();
+
+                Inhibit(false)
+            });
+        paned.add2(&image_area);
+
+        window.show_all();
+        gtk::main();
+    }else{
+        println!("Failed to initialize GTK.");
+    }
+
+
+
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
