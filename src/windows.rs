@@ -1,8 +1,7 @@
-
 use sdl2::render::Renderer;
-use sdl2::pixels::Color;
 use sdl2::rect::*;
 
+use color::Color;
 use image_buffer::ImageBuffer;
 use state::State;
 

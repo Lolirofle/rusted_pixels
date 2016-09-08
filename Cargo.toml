@@ -1,10 +1,11 @@
 [package]
 name = "rusted_pixels"
 version = "0.1.0"
-authors = ["Jesper Fridefors <jesper.fridefors@gmail.com>"]
+authors = ["Jesper Fridefors <jesper.fridefors@gmail.com>","Lolirofle <lolipopple@hotmail.com>"]
 
 [dependencies]
 epoxy = "*"
+image = "*"
 gdk = "*"
 gl = "*"
 glium = "*"

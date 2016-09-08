@@ -1,6 +1,8 @@
-use sdl2::pixels::Color;
-use sdl2::keyboard::Keycode;
+use color::Color;
+use image_ext;
 use state::State;
+
+pub type Keycode = u16;
 
 #[derive(PartialEq)]
 pub enum ExtendedChar {
@@ -42,12 +44,12 @@ pub enum Command {
 }
 
 pub static COMMANDS: &'static [(&'static [Input], Command)] =
-    &[(&[Input::Char(ExtendedChar::CtrlModified(Keycode::S))],
+    &[(&[Input::Char(ExtendedChar::CtrlModified('S' as Keycode))],
        Command::ExportPng),
-      (&[Input::Char(ExtendedChar::AltModified(Keycode::X)),
+      (&[Input::Char(ExtendedChar::AltModified('X' as Keycode)),
          Input::Exact("export-png")],
        Command::ExportPng),
-      (&[Input::Char(ExtendedChar::CtrlModified(Keycode::Q))],
+      (&[Input::Char(ExtendedChar::CtrlModified('Q' as Keycode))],
        Command::Quit)
     ];
 
@@ -89,8 +91,8 @@ pub fn execute_command(state: &mut State) -> CommandResult {
     match interpret_input(&state.input) {
         Ok(command) => match command {
             Command::ExportPng => {
-                state.images[0].save_png_image("tmp/test_out.png").unwrap();
-                println!("exported png");
+                image_ext::save_png_image(&state.images[0],"tmp/test_out.png").unwrap();
+                println!("Exported PNG image");
                 clean_input_and_args(state);
                 CommandResult::Success
             },
