@@ -35,7 +35,8 @@ pub fn main() {
         window.set_position(gtk::WindowPosition::Center);
         window.set_default_size(800,600);
         window.connect_key_press_event(|_,event_key|{
-            println!("{:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode());
+            println!("{:?} {:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode(),event_key.get_state());
+            //ALT+X: 120 53 MOD1_MASK
             Inhibit(false)
         });
         window.connect_delete_event(|_,_|{
@@ -88,6 +89,12 @@ pub fn main() {
                         )
                     }.unwrap(),
                 };
+                let vertices = glium::VertexBuffer::new(&display,&[
+                    gl_ext::Vertex{position: [0.0,0.0],tex_coords: [0.0,0.0]},
+                    gl_ext::Vertex{position: [0.0,1.0],tex_coords: [0.0,1.0]},
+                    gl_ext::Vertex{position: [1.0,1.0],tex_coords: [1.0,1.0]},
+                    gl_ext::Vertex{position: [1.0,0.0],tex_coords: [1.0,0.0]},
+                ]).unwrap();
                 let indices = glium::IndexBuffer::new(
                     &display,
                     glium::index::PrimitiveType::TriangleStrip,
@@ -122,9 +129,11 @@ pub fn main() {
                 let mut gl_state = _gl_state.borrow_mut();
                 *gl_state = Some(gl_ext::State{
                     display : display,
+                    vertices: vertices,
                     indices : indices,
                     program : program,
                     texture : texture,
+                    zoom : 1.0,
                 });
             });
 
@@ -135,40 +144,67 @@ pub fn main() {
                 *gl_state = None;
             });
 
+            let _gl_state = gl_state.clone();
+            image_area.connect_scroll_event(move |_,event|{
+                println!("Scroll: {:?}",event.get_delta());
+                let mut gl_state = _gl_state.borrow_mut();
+                if let Some(gl_state) = gl_state.as_mut(){
+                    let (_,delta) = event.get_delta();
+                    if delta>0.0{
+                        gl_state.zoom*=2.0;
+                    }else if delta<0.0{
+                        gl_state.zoom/=2.0;
+                    }
+                }
+                Inhibit(false)
+            });
+
+
+            let _gl_state = gl_state.clone();
+            image_area.connect_key_press_event(move |_,event|{
+                //Plus: 43 20 
+                //Minus: 45 61
+                println!("Zoom");
+                let mut gl_state = _gl_state.borrow_mut();
+                if let Some(gl_state) = gl_state.as_mut(){
+                    match event.get_keyval(){
+                        43 => {gl_state.zoom*=2.0;},
+                        45 => {gl_state.zoom/=2.0;},
+                        _  => ()
+                    };
+                }
+                Inhibit(false)
+            });
+
             //Drawing of draw area for every frame
             let _gl_state = gl_state.clone();
             image_area.connect_render(move |_,_|{
                 let gl_state = _gl_state.borrow();
-                let gl_state = gl_state.as_ref().unwrap();
-
-                let mut target = gl_state.display.draw();
-                    let (w,h) = target.get_dimensions();
-                    let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
-                    let vertices = glium::VertexBuffer::new(&gl_state.display,&[
-                        gl_ext::Vertex{position: [0.0  ,0.0  ],tex_coords: [0.0,0.0]},
-                        gl_ext::Vertex{position: [0.0  ,tex_h],tex_coords: [0.0,1.0]},
-                        gl_ext::Vertex{position: [tex_w,tex_h],tex_coords: [1.0,1.0]},
-                        gl_ext::Vertex{position: [tex_w,0.0  ],tex_coords: [1.0,0.0]},
-                    ]).unwrap();
-                    target.clear_color(0.3,0.3,0.3,1.0);
-                    target.draw(
-                        &vertices,
-                        &gl_state.indices,
-                        &gl_state.program,
-                        &uniform!{
-                            transformation: [
-                                [ 1.0/w as f32, 0.0, 0.0, 0.0],
-                                [ 0.0, 1.0/h as f32, 0.0, 0.0],
-                                [ 0.0, 0.0, 1.0, 0.0],
-                                [ 0.0, 0.0, 0.0, 1.0f32]
-                            ],
-                            tex: gl_state.texture
-                                .sampled()
-                                .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
-                        },
-                        &Default::default()
-                    ).unwrap();
-                target.finish().unwrap();
+                if let Some(gl_state) = gl_state.as_ref(){
+                    let mut target = gl_state.display.draw();
+                        let (w,h) = target.get_dimensions();
+                        let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
+                        target.clear_color(0.3,0.3,0.3,1.0);
+                        target.draw(
+                            &gl_state.vertices,
+                            &gl_state.indices,
+                            &gl_state.program,
+                            &uniform!{
+                                transformation: [
+                                    [ 2.0/w as f32*tex_w as f32*gl_state.zoom, 0.0, 0.0, 0.0],
+                                    [ 0.0, 2.0/h as f32*tex_h as f32*gl_state.zoom, 0.0, 0.0],
+                                    [ 0.0, 0.0, 1.0, 0.0],
+                                    [ 0.0, 0.0, 0.0, 1.0f32]
+                                ],
+                                tex: gl_state.texture
+                                    .sampled()
+                                    .minify_filter(glium::uniforms::MinifySamplerFilter::Nearest)
+                                    .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
+                            },
+                            &Default::default()
+                        ).unwrap();
+                    target.finish().unwrap();
+                }
 
                 Inhibit(false)
             });
@@ -177,6 +213,13 @@ pub fn main() {
         let command_input = gtk::TextView::new();
         vert_layout.pack_end(&command_input,false,false,0);
 
+        command_input.set_monospace(true);
+        command_input.set_wrap_mode(gtk::WrapMode::None);
+        command_input.connect_key_press_event(|_,event_key|{
+            println!("Input: {:?} {:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode(),event_key.get_state());
+            Inhibit(false)
+        });
+
         window.show_all();
         gtk::main();
     }else{
@@ -184,11 +227,7 @@ pub fn main() {
     }
 
 
-    /*let mut state = State{images: vec![
-        ImageBuffer::load_png_image(&path::PathBuf::from("test.png")).unwrap(),
-        ImageBuffer::new(32,64)
-    ], ..State::new()};
-
+    /*
     let mut windows: Vec<Box<Window>> =
         vec![Box::new(DrawingWindow::new(50, 50, 8,
                                          Color::RGB(100, 100, 100), 0)),
