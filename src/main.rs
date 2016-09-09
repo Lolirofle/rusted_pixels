@@ -19,7 +19,7 @@ use core::ptr;
 use glium::Surface;
 use gtk::prelude::*;
 use shared_library::dynamic_library::DynamicLibrary;
-use std::path;
+use std::{fs,io,path};
 use std::rc::Rc;
 
 use input::*;
@@ -88,12 +88,6 @@ pub fn main() {
                         )
                     }.unwrap(),
                 };
-                let vertices = glium::VertexBuffer::new(&display,&[
-                    gl_ext::Vertex{position: [-1.0,-1.0],tex_coords: [0.0,0.0]},
-                    gl_ext::Vertex{position: [-1.0, 1.0],tex_coords: [0.0,1.0]},
-                    gl_ext::Vertex{position: [ 1.0, 1.0],tex_coords: [1.0,1.0]},
-                    gl_ext::Vertex{position: [ 1.0,-1.0],tex_coords: [1.0,0.0]},
-                ]).unwrap();
                 let indices = glium::IndexBuffer::new(
                     &display,
                     glium::index::PrimitiveType::TriangleStrip,
@@ -114,12 +108,23 @@ pub fn main() {
                     },
                 ).unwrap();
 
+                let image = image::load(
+                    io::BufReader::new(fs::File::open("test.png").unwrap()),
+                    image::PNG
+                ).unwrap().to_rgba();
+                let image_dimensions = image.dimensions();
+                let image = glium::texture::RawImage2d::from_raw_rgba_reversed(
+                    image.into_raw(),
+                    image_dimensions
+                );
+                let texture = glium::texture::SrgbTexture2d::new(&display,image).unwrap();
+
                 let mut gl_state = _gl_state.borrow_mut();
                 *gl_state = Some(gl_ext::State{
-                    display      : display,
-                    vertices: vertices,
-                    indices      : indices,
-                    program      : program,
+                    display : display,
+                    indices : indices,
+                    program : program,
+                    texture : texture,
                 });
             });
 
@@ -132,24 +137,34 @@ pub fn main() {
 
             //Drawing of draw area for every frame
             let _gl_state = gl_state.clone();
-            image_area.connect_render(move |_, _|{
+            image_area.connect_render(move |_,_|{
                 let gl_state = _gl_state.borrow();
                 let gl_state = gl_state.as_ref().unwrap();
 
                 let mut target = gl_state.display.draw();
-                    target.clear_color(0.7,0.3,0.3,1.0);
+                    let (w,h) = target.get_dimensions();
+                    let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
+                    let vertices = glium::VertexBuffer::new(&gl_state.display,&[
+                        gl_ext::Vertex{position: [0.0  ,0.0  ],tex_coords: [0.0,0.0]},
+                        gl_ext::Vertex{position: [0.0  ,tex_h],tex_coords: [0.0,1.0]},
+                        gl_ext::Vertex{position: [tex_w,tex_h],tex_coords: [1.0,1.0]},
+                        gl_ext::Vertex{position: [tex_w,0.0  ],tex_coords: [1.0,0.0]},
+                    ]).unwrap();
+                    target.clear_color(0.3,0.3,0.3,1.0);
                     target.draw(
-                        &gl_state.vertices,
+                        &vertices,
                         &gl_state.indices,
                         &gl_state.program,
                         &uniform!{
                             transformation: [
-                                [ 1.0, 0.0, 0.0, 0.0],
-                                [ 0.0, 1.0, 0.0, 0.0],
+                                [ 1.0/w as f32, 0.0, 0.0, 0.0],
+                                [ 0.0, 1.0/h as f32, 0.0, 0.0],
                                 [ 0.0, 0.0, 1.0, 0.0],
                                 [ 0.0, 0.0, 0.0, 1.0f32]
                             ],
-                            //tex: &opengl_texture
+                            tex: gl_state.texture
+                                .sampled()
+                                .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
                         },
                         &Default::default()
                     ).unwrap();

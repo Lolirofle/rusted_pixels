@@ -4,9 +4,9 @@ use glium_ext;
 
 pub struct State{
     pub display : glium_ext::GtkFacade,
-    pub vertices: glium::VertexBuffer<Vertex>,
     pub indices : glium::IndexBuffer<u16>,
     pub program : glium::program::Program,
+    pub texture : glium::texture::SrgbTexture2d,
 }
 
 #[derive(Copy,Clone)]
