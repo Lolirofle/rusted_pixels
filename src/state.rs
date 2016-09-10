@@ -14,6 +14,7 @@ pub struct State {
     pub args: Vec<Arg>,
     pub zoom: f32,
     pub translation: [f32; 2],
+	pub input_buffer: String,
 }
 
 impl State {
@@ -31,6 +32,7 @@ impl State {
             args: Vec::new(),
             zoom: 1.0,
             translation: [0.0,0.0],
+			input_buffer: String::new(),
         }
     }
 }

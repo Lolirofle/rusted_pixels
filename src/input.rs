@@ -24,7 +24,7 @@ pub enum Input {
     Integer,
     Color,
     String,
-    Exact(&'static str),
+    Exact(String)
 }
 
 pub enum Arg {
@@ -34,37 +34,62 @@ pub enum Arg {
 }
 
 impl Arg {
-
+    pub fn coerce_string(self) -> String {
+        if let Arg::String(string) = self {
+            return string;
+        }
+        panic!("Commands misconfigured. Expected `String` on stack.");
+    }
 }
 
 #[derive(Copy, Clone)]
 pub enum Command {
     ExportPng,
+    Print,
     Quit,
 }
 
-pub static COMMANDS: &'static [(&'static [Input], Command)] =
-    &[(&[Input::Char(ExtendedChar::CtrlModified('S' as Keycode))],
-       Command::ExportPng),
-      (&[Input::Char(ExtendedChar::AltModified('X' as Keycode)),
-         Input::Exact("export-png")],
-       Command::ExportPng),
-      (&[Input::Char(ExtendedChar::CtrlModified('Q' as Keycode))],
-       Command::Quit)
-    ];
+pub const META_X: Input
+    = Input::Char(ExtendedChar::AltModified('X' as Keycode)); 
+
+pub fn get_commands() -> Vec<(Vec<Input>, Command)> {
+    vec![(vec![Input::Char(ExtendedChar::CtrlModified('S' as Keycode))],
+          Command::ExportPng),
+         (vec![META_X,
+               Input::Exact(String::from("export-png"))],
+          Command::ExportPng),
+         (vec![Input::Char(ExtendedChar::CtrlModified('Q' as Keycode))],
+          Command::Quit),
+         (vec![META_X,
+               Input::Exact(String::from("quit"))],
+          Command::Quit),
+         (vec![META_X,
+               Input::Exact(String::from("print")),
+               Input::String],
+          Command::Print)
+    ]
+}
+
 
 pub enum InterpretErr {
     NoValidCommand,
     RequiresMoreInput
 }
 
-
-pub fn interpret_input(input: &[Input]) -> Result<Command, InterpretErr> {
+/*
+ * Interpret the given input to see if there's a matching command
+ * Returns matching command or an err if more input is required,
+ * or wether there's no possible command for the input so far.
+ */
+pub fn interpret_input(input: &[Input],
+                       commands: &[(Vec<Input>, Command)])
+                                   -> Result<Command, InterpretErr> {
     let mut has_match = false;
-    for &(inputstack, command) in COMMANDS {
-        if input == &inputstack[0..input.len()] {
+    for &(ref inputstack, command) in commands {
+        if input.len() <= inputstack.len() &&
+            input == &inputstack[0..input.len()] {
             has_match = true;
-            if input == inputstack {
+            if input == inputstack.as_slice() {
                 return Ok(command);
             }
         }
@@ -82,13 +107,22 @@ pub enum CommandResult {
     Success,
 }
 
-pub fn execute_command(state: &mut State) -> CommandResult {
+/*
+ * Check wether the current states input has a valid
+ * command, and if so, executes the given command.
+ * If no command is possible from the given input,
+ * clear the input buffer. Otherwise, do nothing
+ * and await more user input
+ */
+pub fn execute_command(state: &mut State,
+                       commands: &[(Vec<Input>, Command)])
+-> CommandResult {
     pub fn clean_input_and_args(state: &mut State) {
         state.args = Vec::new();
         state.input = Vec::new();
     }
     
-    match interpret_input(&state.input) {
+    match interpret_input(&state.input, commands) {
         Ok(command) => match command {
             Command::ExportPng => {
                 image_ext::save_png_image(&state.images[0],"tmp/test_out.png").unwrap();
@@ -99,6 +133,11 @@ pub fn execute_command(state: &mut State) -> CommandResult {
             Command::Quit => {
                 println!("quit succesfully");
                 CommandResult::Quit
+            },
+            Command::Print => {
+                println!("{}", state.args.pop().unwrap().coerce_string());
+                clean_input_and_args(state);
+                CommandResult::Success
             },
         },
         Err(InterpretErr::NoValidCommand) => {

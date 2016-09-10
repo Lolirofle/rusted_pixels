@@ -75,6 +75,7 @@ pub fn main() {
             ],
             ..state::State::new()
         }));
+		let commands = input::get_commands();
 
         //Window layout
         let vert_layout = gtk::Box::new(gtk::Orientation::Vertical,0);
@@ -105,30 +106,54 @@ pub fn main() {
                         KEY_MINUS | KEY_KP_MINUS => {state.zoom/=2.0;},
                         key  => {
                             /*// every command begins with a single key
-                            if state.input.is_empty() {
-                                match keymod {
-                                    LCTRLMOD => {
-                                        state.input.push(
-                                            Input::Char(ExtendedChar::CtrlModified(keycode)));
-                                    },
-                                    LALTMOD => {
-                                        state.input.push(
-                                            Input::Char(ExtendedChar::AltModified(keycode)));
-                                    },
-                                    _ => {
-                                        state.input.push(
-                                            Input::Char(ExtendedChar::NonModified(keycode)));
-                                    }
-                                }
-                                match execute_command(&mut state) {
-                                    CommandResult::Quit => { break 'main_loop },
-                                    _ => {}
-                                }
-                            } else {
-                                // add the keycode char to some buffer,
-                                // then add code to interpret that buffer when
-                                // RET is pressed
-                            }*/
+				            if state.input.is_empty() {
+				                match keymod {
+				                    LCTRLMOD => {
+				                        state.input.push(
+				                            Input::Char(ExtendedChar::CtrlModified(keycode)));
+				                    },
+				                    LALTMOD => {
+				                        state.input.push(
+				                            Input::Char(ExtendedChar::AltModified(keycode)));
+				                    },
+				                    _ => {
+				                        state.input.push(
+				                            Input::Char(ExtendedChar::NonModified(keycode)));
+				                    }
+				                }
+				                match execute_command(&mut state, &commands) {
+				                    CommandResult::Quit => { break 'main_loop },
+				                    _ => {}
+				                }
+				            }
+				            // If escape is pressed, clear input buffer or pop
+				            // input stack
+				            else if keycode == Keycode::Escape {
+				                if !state.input_buffer.is_empty() {
+				                    state.input_buffer = String::new();
+				                } else {
+				                    state.input.pop();
+				                }
+				            }
+				            else if keycode == Keycode::Return {
+				                let (input_type, arg)
+				                    = input::parse_input(&state.input_buffer);
+				                state.input.push(input_type);
+				                if let Some(arg) = arg {
+				                    state.args.push(arg);
+				                }
+				                state.input_buffer = String::new();
+				                match execute_command(&mut state, &commands) {
+				                    CommandResult::Quit => { break 'main_loop },
+				                    _ => {}
+				                }
+				            }
+				            else {
+				                if let Some(chr) = input::keycode_to_char(keycode) {
+				                    state.input_buffer.push(chr);
+				                    println!("{:?}", state.input_buffer.as_str());
+				                }
+				            }*/
                         }
                     };
                     Inhibit(false)
