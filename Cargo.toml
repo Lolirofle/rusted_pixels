@@ -10,9 +10,7 @@ gdk = "*"
 gdk-sys = "*"
 gl = "*"
 glium = "*"
-libc = "*"
 shared_library = "*"
-vecmath = "*"
 
 [dependencies.gtk]
 version = "*"

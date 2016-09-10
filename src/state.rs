@@ -8,20 +8,18 @@ use input::{Input,Arg};
  */
 pub struct State {
     pub current_color: Color,
-    pub left_mouse_down: bool,
-    pub right_mouse_down: bool,
     pub images: Vec<RgbaImage>,
     pub palettes: Vec<Color>,//TODO: Multiple palettes
     pub input: Vec<Input>,
     pub args: Vec<Arg>,
+    pub zoom: f32,
+    pub translation: [f32; 2],
 }
 
 impl State {
     pub fn new() -> Self{
         State {
             current_color: Color::RGB(255,255,255),
-            left_mouse_down: false,
-            right_mouse_down: false,
             images: vec![],
             palettes: vec![
                 Color::RGB(0,0,0),
@@ -31,6 +29,8 @@ impl State {
             ],
             input: Vec::new(),
             args: Vec::new(),
+            zoom: 1.0,
+            translation: [0.0,0.0],
         }
     }
 }
