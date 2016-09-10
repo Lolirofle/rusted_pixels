@@ -1,9 +1,14 @@
+#![allow(dead_code)]
+
 extern crate core;
 extern crate epoxy;
 extern crate image;
 extern crate gl;
 extern crate gtk;
+extern crate gdk;
+extern crate gdk_sys;
 extern crate shared_library;
+extern crate vecmath;
 #[macro_use]extern crate glium;
 
 mod color;
@@ -12,6 +17,7 @@ mod glium_ext;
 mod image_ext;
 mod input;
 mod state;
+mod x11_keymap;
 //mod windows;
 
 use core::cell::RefCell;
@@ -90,10 +96,10 @@ pub fn main() {
                     }.unwrap(),
                 };
                 let vertices = glium::VertexBuffer::new(&display,&[
-                    gl_ext::Vertex{position: [0.0,0.0],tex_coords: [0.0,0.0]},
-                    gl_ext::Vertex{position: [0.0,1.0],tex_coords: [0.0,1.0]},
-                    gl_ext::Vertex{position: [1.0,1.0],tex_coords: [1.0,1.0]},
-                    gl_ext::Vertex{position: [1.0,0.0],tex_coords: [1.0,0.0]},
+                    gl_ext::Vertex{position: [-1.0,-1.0],tex_coords: [0.0,0.0]},
+                    gl_ext::Vertex{position: [-1.0, 1.0],tex_coords: [0.0,1.0]},
+                    gl_ext::Vertex{position: [ 1.0, 1.0],tex_coords: [1.0,1.0]},
+                    gl_ext::Vertex{position: [ 1.0,-1.0],tex_coords: [1.0,0.0]},
                 ]).unwrap();
                 let indices = glium::IndexBuffer::new(
                     &display,
@@ -105,11 +111,11 @@ pub fn main() {
                         vertex  : include_str!(  "vertex.140.glsl"),
                         fragment: include_str!("fragment.140.glsl"),
                     },
-                    110 => {  
+                    110 => {
                         vertex  : include_str!(  "vertex.110.glsl"),
                         fragment: include_str!("fragment.110.glsl"),
                     },
-                    100 => {  
+                    100 => {
                         vertex  : include_str!(  "vertex.100.glsl"),
                         fragment: include_str!("fragment.100.glsl"),
                     },
@@ -133,7 +139,10 @@ pub fn main() {
                     indices : indices,
                     program : program,
                     texture : texture,
-                    zoom : 1.0,
+                    zoom    : 1.0,
+                    translation: [0.0,0.0],
+                    translation_previous_pos: None,
+                    dimensions: (1.0,1.0),
                 });
             });
 
@@ -144,36 +153,13 @@ pub fn main() {
                 *gl_state = None;
             });
 
+            //Resize of draw area
             let _gl_state = gl_state.clone();
-            image_area.connect_scroll_event(move |_,event|{
-                println!("Scroll: {:?}",event.get_delta());
+            image_area.connect_resize(move |_,w,h|{
                 let mut gl_state = _gl_state.borrow_mut();
                 if let Some(gl_state) = gl_state.as_mut(){
-                    let (_,delta) = event.get_delta();
-                    if delta>0.0{
-                        gl_state.zoom*=2.0;
-                    }else if delta<0.0{
-                        gl_state.zoom/=2.0;
-                    }
+                    gl_state.dimensions = (w as f32,h as f32);
                 }
-                Inhibit(false)
-            });
-
-
-            let _gl_state = gl_state.clone();
-            image_area.connect_key_press_event(move |_,event|{
-                //Plus: 43 20 
-                //Minus: 45 61
-                println!("Zoom");
-                let mut gl_state = _gl_state.borrow_mut();
-                if let Some(gl_state) = gl_state.as_mut(){
-                    match event.get_keyval(){
-                        43 => {gl_state.zoom*=2.0;},
-                        45 => {gl_state.zoom/=2.0;},
-                        _  => ()
-                    };
-                }
-                Inhibit(false)
             });
 
             //Drawing of draw area for every frame
@@ -182,20 +168,22 @@ pub fn main() {
                 let gl_state = _gl_state.borrow();
                 if let Some(gl_state) = gl_state.as_ref(){
                     let mut target = gl_state.display.draw();
-                        let (w,h) = target.get_dimensions();
                         let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
+                        let (scale_x,scale_y) = (
+                            1.0/gl_state.dimensions.0*tex_w*gl_state.zoom,
+                            1.0/gl_state.dimensions.1*tex_h*gl_state.zoom,
+                        );
                         target.clear_color(0.3,0.3,0.3,1.0);
                         target.draw(
                             &gl_state.vertices,
                             &gl_state.indices,
                             &gl_state.program,
                             &uniform!{
-                                transformation: [
-                                    [ 2.0/w as f32*tex_w as f32*gl_state.zoom, 0.0, 0.0, 0.0],
-                                    [ 0.0, 2.0/h as f32*tex_h as f32*gl_state.zoom, 0.0, 0.0],
-                                    [ 0.0, 0.0, 1.0, 0.0],
-                                    [ 0.0, 0.0, 0.0, 1.0f32]
-                                ],
+                                transformation: [//Translation*Scale transformation matrix
+                                    [ scale_x, 0.0, 0.0],
+                                    [ 0.0, scale_y, 0.0],
+                                    [ gl_state.translation[0]/gl_state.dimensions.0*2.0, -gl_state.translation[1]/gl_state.dimensions.1*2.0, 1.0f32]
+                                ],//TODO: The translation seem slightly incorrect (Almost not noticable)
                                 tex: gl_state.texture
                                     .sampled()
                                     .minify_filter(glium::uniforms::MinifySamplerFilter::Nearest)
@@ -210,13 +198,88 @@ pub fn main() {
             });
         paned.add2(&image_area);
 
+        let _gl_state = gl_state.clone();
+        paned.connect_key_press_event(move |_,event|{
+            let mut gl_state = _gl_state.borrow_mut();
+            if let Some(gl_state) = gl_state.as_mut(){
+                use gdk_sys::{
+                    GDK_KEY_plus        as KEY_PLUS,
+                    GDK_KEY_minus       as KEY_MINUS,
+                    GDK_KEY_KP_Add      as KEY_KP_PLUS,
+                    GDK_KEY_KP_Subtract as KEY_KP_MINUS,
+                };
+                match event.get_keyval() as i32{
+                    KEY_PLUS  | KEY_KP_PLUS  => {gl_state.zoom*=2.0;},
+                    KEY_MINUS | KEY_KP_MINUS => {gl_state.zoom/=2.0;},
+                    _  => ()
+                };
+            }
+            Inhibit(false)
+        });
+
+        let _gl_state = gl_state.clone();
+        image_area.add_events(gdk_sys::GDK_SCROLL_MASK.bits() as i32);
+        image_area.add_events(gdk_sys::GDK_SMOOTH_SCROLL_MASK.bits() as i32);
+        image_area.connect_scroll_event(move |_,event|{
+            let mut gl_state = _gl_state.borrow_mut();
+            if let Some(gl_state) = gl_state.as_mut(){
+                let (_,delta) = event.get_delta();
+                if delta>0.0{
+                    gl_state.zoom/=2.0;
+                }else if delta<0.0{
+                    gl_state.zoom*=2.0;
+                }
+            }
+            Inhibit(false)
+        });
+        image_area.add_events(gdk_sys::GDK_ALL_EVENTS_MASK.bits() as i32);
+        let _gl_state = gl_state.clone();
+        image_area.connect_button_release_event(move |_,event|{
+            let mut gl_state = _gl_state.borrow_mut();
+            if let Some(gl_state) = gl_state.as_mut(){
+                if event.get_state().contains(gdk::BUTTON1_MASK){
+                    gl_state.translation_previous_pos = None;
+                }
+                
+            }
+            Inhibit(false)
+        });
+
+        let _gl_state = gl_state.clone();
+        image_area.connect_motion_notify_event(move |_,event|{
+            let mut gl_state = _gl_state.borrow_mut();
+            if let Some(gl_state) = gl_state.as_mut(){
+                if event.get_state().contains(gdk::BUTTON1_MASK){
+                    let pos = event.get_position();
+                    let pos = (pos.0 as f32,pos.1 as f32);
+
+                    match &mut gl_state.translation_previous_pos{
+                        &mut Some(ref mut previous_pos) => {
+                            gl_state.translation = [
+                                gl_state.translation[0] + pos.0-previous_pos.0,
+                                gl_state.translation[1] + pos.1-previous_pos.1
+                            ];
+                            *previous_pos = (pos.0,pos.1);
+                        },
+                        option => {
+                            *option = Some(pos);
+                        }
+                    }
+                }
+            }
+            Inhibit(false)
+        });
+
         let command_input = gtk::TextView::new();
         vert_layout.pack_end(&command_input,false,false,0);
 
         command_input.set_monospace(true);
         command_input.set_wrap_mode(gtk::WrapMode::None);
-        command_input.connect_key_press_event(|_,event_key|{
-            println!("Input: {:?} {:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode(),event_key.get_state());
+        command_input.connect_key_press_event(|widget,event_key|{
+            if event_key.get_hardware_keycode() == x11_keymap::ENTER{
+                widget.set_buffer(None);
+                widget.set_editable(false);
+            }
             Inhibit(false)
         });
 
@@ -225,7 +288,6 @@ pub fn main() {
     }else{
         println!("Failed to initialize GTK.");
     }
-
 
     /*
     let mut windows: Vec<Box<Window>> =
@@ -303,4 +365,16 @@ pub fn main() {
             }
         }
     }*/
+}
+
+fn window_to_image_pos(pos: (f32,f32),gl_state: &GlState) -> (f32,f32){
+    let (tex_w,tex_h) = (
+        gl_state.texture.get_width() as f32,
+        gl_state.texture.get_height().unwrap() as f32
+    );
+
+    (
+        pos.0 as f32-gl_state.translation[0]-((gl_state.dimensions.0-tex_w*gl_state.zoom)/2.0))/gl_state.zoom,
+        pos.1 as f32-gl_state.translation[1]-((gl_state.dimensions.1-tex_h*gl_state.zoom)/2.0))/gl_state.zoom
+    )
 }
