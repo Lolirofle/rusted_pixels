@@ -54,8 +54,9 @@ pub fn main() {
         });
 
         //Data initialization
-        let gl_state = Rc::new(RefCell::new(None));
-        let state    = Rc::new(RefCell::new(State{
+        let gl_state         = Rc::new(RefCell::new(None));
+        let gl_state_preview = Rc::new(RefCell::new(None));
+        let state            = Rc::new(RefCell::new(State{
             images: vec![
                 image::load(
                     io::BufReader::new(fs::File::open("test.png").unwrap()),
@@ -81,8 +82,15 @@ pub fn main() {
             let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
                 vert_layout.pack_start(&paned,true,true,0);
 
-                let button = gtk::Button::new_with_label("Click me!");
-                    paned.add1(&button);
+                let split_left = gtk::Box::new(gtk::Orientation::Vertical,0);
+                    paned.add1(&split_left);
+
+                    let button = gtk::Button::new_with_label("Click me!");
+                        split_left.pack_start(&button,false,true,2);
+
+                    let preview_area = gtk::GLArea::new();
+                        split_left.pack_end(&preview_area,true,true,0);
+                        widget_impl::image::preview_area(&preview_area,&gl_state_preview,&state);
 
                 let image_area = gtk::GLArea::new();
                     paned.add2(&image_area);
@@ -100,8 +108,8 @@ pub fn main() {
     }
 }
 
-fn window_to_image_pos(pos: (f32,f32),gl_state: &gl_ext::State,state: &State) -> (f32,f32){
-    let (tex_w,tex_h) = (//TODO: May be possible to replace this with state.image.dimensions() and not needing gl_state
+fn window_to_image_pos(pos: (f32,f32),gl_state: &gl_ext::ImageState,state: &State) -> (f32,f32){
+    let (tex_w,tex_h) = (
         gl_state.texture.get_width() as f32,
         gl_state.texture.get_height().unwrap() as f32
     );

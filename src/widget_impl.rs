@@ -102,14 +102,17 @@ pub mod image{
     use gl_ext;
     use glium_ext;
 
-    pub type GlStateType = Rc<RefCell<Option<gl_ext::State>>>;
+    pub type ImageStateType   = Rc<RefCell<Option<gl_ext::ImageState>>>;
+    pub type PreviewStateType = Rc<RefCell<Option<gl_ext::PreviewState>>>;
 
     /**
      * Implements an GLArea to be an image area
      */
-    pub fn image_area(widget: &gtk::GLArea,gl_state: &GlStateType,state: &super::StateType){
+    pub fn image_area(widget: &gtk::GLArea,gl_state: &ImageStateType,state: &super::StateType){
         //Initialization of draw area
         widget.connect_realize(move_fn_with_clones!(state,gl_state; |widget|{
+            widget.make_current();
+
             //Wrapper struct for glium
             let display = glium_ext::GtkFacade{
                 context: unsafe{
@@ -157,7 +160,7 @@ pub mod image{
             let texture = glium::texture::SrgbTexture2d::new(&display,image).unwrap();
 
             let mut gl_state = gl_state.borrow_mut();
-            *gl_state = Some(gl_ext::State{
+            *gl_state = Some(gl_ext::ImageState{
                 display : display,
                 vertices: vertices,
                 indices : indices,
@@ -183,12 +186,17 @@ pub mod image{
         }));
 
         //Drawing of draw area for every frame
-        widget.connect_render(move_fn_with_clones!(state,gl_state; |_,_|{
+        widget.connect_render(move_fn_with_clones!(state,gl_state; |_,widget|{
             let state = state.borrow();
             let gl_state = gl_state.borrow();
             if let Some(gl_state) = gl_state.as_ref(){
+                widget.make_current();
+
                 let mut target = gl_state.display.draw();
-                    let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
+                    let (tex_w,tex_h) = (
+                        gl_state.texture.get_width() as f32,
+                        gl_state.texture.get_height().unwrap() as f32
+                    );
                     let (scale_x,scale_y) = (
                         1.0/gl_state.dimensions.0*tex_w*state.zoom,
                         1.0/gl_state.dimensions.1*tex_h*state.zoom,
@@ -266,6 +274,112 @@ pub mod image{
                     }
                 }
             }
+            Inhibit(false)
+        }));
+    }
+
+    pub fn preview_area(widget: &gtk::GLArea,gl_state: &PreviewStateType,state: &super::StateType){
+        //Initialization of draw area
+        widget.connect_realize(move_fn_with_clones!(state,gl_state; |widget|{
+            widget.make_current();
+
+            //Wrapper struct for glium
+            let display = glium_ext::GtkFacade{
+                context: unsafe{
+                    glium::backend::Context::new::<_,()>(
+                        glium_ext::GtkBackend{gl_area: widget.clone()},
+                        true,
+                        Default::default()
+                    )
+                }.unwrap(),
+            };
+            //GL shader data for an image
+            let vertices = glium::VertexBuffer::new(&display,&[
+                gl_ext::Vertex{position: [-1.0,-1.0],tex_coords: [0.0,0.0]},
+                gl_ext::Vertex{position: [-1.0, 1.0],tex_coords: [0.0,1.0]},
+                gl_ext::Vertex{position: [ 1.0, 1.0],tex_coords: [1.0,1.0]},
+                gl_ext::Vertex{position: [ 1.0,-1.0],tex_coords: [1.0,0.0]},
+            ]).unwrap();
+            let indices = glium::IndexBuffer::new(
+                &display,
+                glium::index::PrimitiveType::TriangleStrip,
+                &[1,2,0,3u16]
+            ).unwrap();
+            //GL shaders
+            let program = program!(&display,
+                140 => {
+                    vertex  : include_str!(  "vertex.140.glsl"),
+                    fragment: include_str!("fragment.140.glsl"),
+                },
+                110 => {
+                    vertex  : include_str!(  "vertex.110.glsl"),
+                    fragment: include_str!("fragment.110.glsl"),
+                },
+                100 => {
+                    vertex  : include_str!(  "vertex.100.glsl"),
+                    fragment: include_str!("fragment.100.glsl"),
+                },
+            ).unwrap();
+
+            let state = state.borrow();
+            let image_dimensions = state.images[0].dimensions();
+            let image = glium::texture::RawImage2d::from_raw_rgba_reversed(
+                state.images[0].clone().into_raw(),//TODO
+                image_dimensions
+            );
+            let texture = glium::texture::SrgbTexture2d::new(&display,image).unwrap();
+
+            let mut gl_state = gl_state.borrow_mut();
+            *gl_state = Some(gl_ext::PreviewState{
+                display : display,
+                vertices: vertices,
+                indices : indices,
+                program : program,
+                texture : texture,
+                dimensions: (1.0,1.0),
+            });
+        }));
+
+        //Finalization of draw area
+        widget.connect_unrealize(move_fn_with_clones!(gl_state; |_|{
+            let mut gl_state = gl_state.borrow_mut();
+            *gl_state = None;
+        }));
+
+        //Drawing of draw area for every frame
+        widget.connect_render(move_fn_with_clones!(gl_state; |_,widget|{
+            let gl_state = gl_state.borrow();
+            if let Some(gl_state) = gl_state.as_ref(){
+                widget.make_current();
+
+                let mut target = gl_state.display.draw();
+                    let (w,h) = target.get_dimensions();
+                    let (tex_w,tex_h) = (gl_state.texture.get_width() as f32,gl_state.texture.get_height().unwrap() as f32);
+                    let (scale_x,scale_y) = (
+                        1.0/w as f32*tex_w,
+                        1.0/h as f32*tex_h,
+                    );
+                    target.clear_color(0.1,0.1,0.1,1.0);
+                    target.draw(
+                        &gl_state.vertices,
+                        &gl_state.indices,
+                        &gl_state.program,
+                        &uniform!{
+                            transformation: [
+                                [ scale_x, 0.0, 0.0],
+                                [ 0.0, scale_y, 0.0],
+                                [ 0.0, 0.0, 1.0f32]
+                            ],
+                            tex: gl_state.texture
+                                .sampled()
+                                .minify_filter(glium::uniforms::MinifySamplerFilter::Nearest)
+                                .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest),
+                        },
+                        &Default::default()
+                    ).unwrap();
+                target.finish().unwrap();
+            }
+
             Inhibit(false)
         }));
     }
