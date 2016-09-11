@@ -1,15 +1,13 @@
 use color::Color;
+use gdk::{
+    ModifierType,
+    MOD1_MASK as LCTRLMOD
+    MOD2_MASK as LALTMOD
+};
 use image_ext;
 use state::State;
 
 pub type Keycode = u16;
-
-#[derive(PartialEq)]
-pub enum ExtendedChar {
-    NonModified(Keycode),
-    CtrlModified(Keycode),
-    AltModified(Keycode),
-}
 
 /*
  * Veeery emacs inspired. Basically a emacs-like commando like
@@ -20,7 +18,7 @@ pub enum ExtendedChar {
 
 #[derive(PartialEq)]
 pub enum Input {
-    Char(ExtendedChar),
+    Char(Keycode,ModifierType),
     Integer,
     Color,
     String,
@@ -49,16 +47,15 @@ pub enum Command {
     Quit,
 }
 
-pub const META_X: Input
-    = Input::Char(ExtendedChar::AltModified('X' as Keycode)); 
+pub const META_X: Input = Input::Char('X' as Keycode,LALTMOD);
 
 pub fn get_commands() -> Vec<(Vec<Input>, Command)> {
-    vec![(vec![Input::Char(ExtendedChar::CtrlModified('S' as Keycode))],
+    vec![(vec![Input::Char('S' as Keycode,LCTRLMOD)],
           Command::ExportPng),
          (vec![META_X,
                Input::Exact(String::from("export-png"))],
           Command::ExportPng),
-         (vec![Input::Char(ExtendedChar::CtrlModified('Q' as Keycode))],
+         (vec![Input::Char('Q' as Keycode,LCTRLMOD)],
           Command::Quit),
          (vec![META_X,
                Input::Exact(String::from("quit"))],

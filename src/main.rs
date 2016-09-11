@@ -95,32 +95,19 @@ pub fn main() {
 
                 paned.connect_key_press_event(move_fn_with_clones!(state; |_,event|{
                     let mut state = state.borrow_mut();
-                    use gdk_sys::{
-                        GDK_KEY_plus        as KEY_PLUS,
-                        GDK_KEY_minus       as KEY_MINUS,
-                        GDK_KEY_KP_Add      as KEY_KP_PLUS,
-                        GDK_KEY_KP_Subtract as KEY_KP_MINUS,
+                    use gdk::enums::key::{
+                        plus        as PLUS,
+                        minus       as MINUS,
+                        KP_Add      as KP_PLUS,
+                        KP_Subtract as KP_MINUS,
                     };
-                    match event.get_keyval() as i32{
+                    match event.get_keyval(){
                         KEY_PLUS  | KEY_KP_PLUS  => {state.zoom*=2.0;},
                         KEY_MINUS | KEY_KP_MINUS => {state.zoom/=2.0;},
                         key  => {
                             /*// every command begins with a single key
 				            if state.input.is_empty() {
-				                match keymod {
-				                    LCTRLMOD => {
-				                        state.input.push(
-				                            Input::Char(ExtendedChar::CtrlModified(keycode)));
-				                    },
-				                    LALTMOD => {
-				                        state.input.push(
-				                            Input::Char(ExtendedChar::AltModified(keycode)));
-				                    },
-				                    _ => {
-				                        state.input.push(
-				                            Input::Char(ExtendedChar::NonModified(keycode)));
-				                    }
-				                }
+				                state.input.push(Input::Char(keycode,keymod));
 				                match execute_command(&mut state, &commands) {
 				                    CommandResult::Quit => { break 'main_loop },
 				                    _ => {}
