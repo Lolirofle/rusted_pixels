@@ -1,13 +1,14 @@
 use color::Color;
-use gdk::{
-    ModifierType,
-    MOD1_MASK as LCTRLMOD
-    MOD2_MASK as LALTMOD
-};
 use image_ext;
 use state::State;
 
-pub type Keycode = u16;
+pub use gdk::enums::key as keys;
+pub use gdk::enums::key::Key as Keycode;
+pub use gdk::ModifierType as Mod;
+pub use gdk::{
+    CONTROL_MASK as LCTRLMOD,
+    MOD1_MASK    as LALTMOD,
+};
 
 /*
  * Veeery emacs inspired. Basically a emacs-like commando like
@@ -18,7 +19,7 @@ pub type Keycode = u16;
 
 #[derive(PartialEq)]
 pub enum Input {
-    Char(Keycode,ModifierType),
+    Char(Keycode,Mod),
     Integer,
     Color,
     String,
@@ -45,28 +46,47 @@ pub enum Command {
     ExportPng,
     Print,
     Quit,
+    ZoomMult2,
+    ZoomDiv2,
 }
 
-pub const META_X: Input = Input::Char('X' as Keycode,LALTMOD);
+pub const META_X: Input = Input::Char(keys::x,LALTMOD);
 
+#[allow(non_snake_case)]
 pub fn get_commands() -> Vec<(Vec<Input>, Command)> {
-    vec![(vec![Input::Char('S' as Keycode,LCTRLMOD)],
-          Command::ExportPng),
-         (vec![META_X,
-               Input::Exact(String::from("export-png"))],
-          Command::ExportPng),
-         (vec![Input::Char('Q' as Keycode,LCTRLMOD)],
-          Command::Quit),
-         (vec![META_X,
-               Input::Exact(String::from("quit"))],
-          Command::Quit),
-         (vec![META_X,
-               Input::Exact(String::from("print")),
-               Input::String],
-          Command::Print)
+    let NOMOD = Mod::empty();
+
+    vec![
+        (
+            vec![Input::Char(keys::s,LCTRLMOD)],
+            Command::ExportPng
+        ),(
+            vec![META_X , Input::Exact(String::from("export-png"))],
+            Command::ExportPng
+        ),(
+            vec![Input::Char(keys::q,LCTRLMOD)],
+            Command::Quit
+        ),(
+            vec![META_X , Input::Exact(String::from("quit"))],
+            Command::Quit
+        ),(
+            vec![META_X , Input::Exact(String::from("print")) , Input::String],
+            Command::Print
+        ),(
+            vec![Input::Char(keys::plus,NOMOD)],
+            Command::ZoomMult2
+        ),(
+            vec![Input::Char(keys::KP_Add,NOMOD)],
+            Command::ZoomMult2
+        ),(
+            vec![Input::Char(keys::minus,NOMOD)],
+            Command::ZoomDiv2
+        ),(
+            vec![Input::Char(keys::KP_Subtract,NOMOD)],
+            Command::ZoomDiv2
+        )
     ]
 }
-
 
 pub enum InterpretErr {
     NoValidCommand,
@@ -76,7 +96,7 @@ pub enum InterpretErr {
 /*
  * Interpret the given input to see if there's a matching command
  * Returns matching command or an err if more input is required,
- * or wether there's no possible command for the input so far.
+ * or whether there's no possible command for the input so far.
  */
 pub fn interpret_input(input: &[Input],
                        commands: &[(Vec<Input>, Command)])
@@ -91,10 +111,10 @@ pub fn interpret_input(input: &[Input],
             }
         }
     }
-    match has_match {
-        true => Err(InterpretErr::RequiresMoreInput),
-        false => Err(InterpretErr::NoValidCommand)
-    }
+    Err(match has_match{
+        true  => InterpretErr::RequiresMoreInput,
+        false => InterpretErr::NoValidCommand
+    })
 }
 
 pub enum CommandResult {
@@ -118,12 +138,12 @@ pub fn execute_command(state: &mut State,
         state.args = Vec::new();
         state.input = Vec::new();
     }
-    
+
     match interpret_input(&state.input, commands) {
         Ok(command) => match command {
             Command::ExportPng => {
                 image_ext::save_png_image(&state.images[0],"tmp/test_out.png").unwrap();
-                println!("Exported PNG image");
+                println!("exported png");
                 clean_input_and_args(state);
                 CommandResult::Success
             },
@@ -136,6 +156,16 @@ pub fn execute_command(state: &mut State,
                 clean_input_and_args(state);
                 CommandResult::Success
             },
+            Command::ZoomMult2 => {
+                state.zoom*=2.0;
+                clean_input_and_args(state);
+                CommandResult::Success
+            },
+            Command::ZoomDiv2 => {
+                state.zoom/=2.0;
+                clean_input_and_args(state);//TODO: Every command cleans? Why not move to end of scope?
+                CommandResult::Success
+            },
         },
         Err(InterpretErr::NoValidCommand) => {
             clean_input_and_args(state);
@@ -144,5 +174,37 @@ pub fn execute_command(state: &mut State,
         Err(InterpretErr::RequiresMoreInput) => {
             CommandResult::RequiresMoreInput
         }
+    }
+}
+
+pub fn keycode_to_char(keycode: Keycode) -> Option<char> {
+    if (keycode>='A' as Keycode && keycode<='Z'  as Keycode)
+    || (keycode>='a' as Keycode && keycode<='z'  as Keycode)
+    || keycode=='\'' as Keycode
+    || keycode=='-'  as Keycode
+    || keycode==' '  as Keycode
+    {
+        Some((keycode as u8) as char)
+    }else{
+        None
+    }
+}
+
+/*
+ * Parses the input, returning.
+ * If the input is an argument, also return it.
+ */
+pub fn parse_input(input: &str) -> (Input, Option<Arg>) {
+    if let Ok(integer) = input.parse::<isize>() {
+        (Input::Integer, Some(Arg::Integer(integer)))
+    }
+    else if input.len() > 1 &&
+        input.starts_with('\'') &&
+        input.as_bytes()[input.len() - 1] == b'\'' {
+            (Input::String, Some(Arg::String(
+                input[1..(input.len() - 1)].to_string())))
+        }
+    else {
+        (Input::Exact(input.to_string()), None)
     }
 }

@@ -14,17 +14,16 @@ mod color;
 mod gl_ext;
 mod glium_ext;
 mod image_ext;
-mod input;
 mod state;
 mod x11_keymap;
-//mod windows;
+#[macro_use]mod input;
 
 use core::cell::RefCell;
 use core::ptr;
 use glium::Surface;
 use gtk::prelude::*;
 use shared_library::dynamic_library::DynamicLibrary;
-use std::{fs,io,path};
+use std::{fs,io};
 use std::rc::Rc;
 
 use input::*;
@@ -55,7 +54,7 @@ pub fn main() {
             window.set_position(gtk::WindowPosition::Center);
             window.set_default_size(800,600);
             window.connect_key_press_event(|_,event_key|{
-                println!("{:?} {:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode(),event_key.get_state());
+                //println!("{:?} {:?} {:?}",event_key.get_keyval(),event_key.get_hardware_keycode(),event_key.get_state());
                 //ALT+X: 120 53 MOD1_MASK
                 Inhibit(false)
             });
@@ -75,7 +74,7 @@ pub fn main() {
             ],
             ..state::State::new()
         }));
-		let commands = input::get_commands();
+        let commands = input::get_commands();
 
         //Window layout
         let vert_layout = gtk::Box::new(gtk::Orientation::Vertical,0);
@@ -93,62 +92,53 @@ pub fn main() {
             let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
                 vert_layout.pack_start(&paned,true,true,0);
 
+                //Input system
                 paned.connect_key_press_event(move_fn_with_clones!(state; |_,event|{
                     let mut state = state.borrow_mut();
-                    use gdk::enums::key::{
-                        plus        as PLUS,
-                        minus       as MINUS,
-                        KP_Add      as KP_PLUS,
-                        KP_Subtract as KP_MINUS,
-                    };
-                    match event.get_keyval(){
-                        KEY_PLUS  | KEY_KP_PLUS  => {state.zoom*=2.0;},
-                        KEY_MINUS | KEY_KP_MINUS => {state.zoom/=2.0;},
-                        key  => {
-                            /*// every command begins with a single key
-				            if state.input.is_empty() {
-				                state.input.push(Input::Char(keycode,keymod));
-				                match execute_command(&mut state, &commands) {
-				                    CommandResult::Quit => { break 'main_loop },
-				                    _ => {}
-				                }
-				            }
-				            // If escape is pressed, clear input buffer or pop
-				            // input stack
-				            else if keycode == Keycode::Escape {
-				                if !state.input_buffer.is_empty() {
-				                    state.input_buffer = String::new();
-				                } else {
-				                    state.input.pop();
-				                }
-				            }
-				            else if keycode == Keycode::Return {
-				                let (input_type, arg)
-				                    = input::parse_input(&state.input_buffer);
-				                state.input.push(input_type);
-				                if let Some(arg) = arg {
-				                    state.args.push(arg);
-				                }
-				                state.input_buffer = String::new();
-				                match execute_command(&mut state, &commands) {
-				                    CommandResult::Quit => { break 'main_loop },
-				                    _ => {}
-				                }
-				            }
-				            else {
-				                if let Some(chr) = input::keycode_to_char(keycode) {
-				                    state.input_buffer.push(chr);
-				                    println!("{:?}", state.input_buffer.as_str());
-				                }
-				            }*/
+
+                    let (keycode,keymod) = (event.get_keyval(),event.get_state());
+
+                    // every command begins with a single key
+                    if state.input.is_empty() {
+                        state.input.push(Input::Char(keycode,keymod));
+                        match execute_command(&mut state, &commands) {
+                            CommandResult::Quit => { gtk::main_quit(); },
+                            _ => {}
                         }
-                    };
+                    }else{match keycode{
+                        //Clear input buffer or pop input stack
+                        keys::Escape => {
+                            if !state.input_buffer.is_empty() {
+                                state.input_buffer = String::new();
+                            } else {
+                                state.input.pop();
+                            }
+                        },
+                        keys::Return => {
+                            let (input_type, arg)
+                                = input::parse_input(&state.input_buffer);
+                            state.input.push(input_type);
+                            if let Some(arg) = arg {
+                                state.args.push(arg);
+                            }
+                            state.input_buffer = String::new();
+                            match execute_command(&mut state, &commands) {
+                                CommandResult::Quit => { gtk::main_quit(); },
+                                _ => {}
+                            }
+                        },
+                        keycode => if let Some(chr) = input::keycode_to_char(keycode) {
+                            state.input_buffer.push(chr);
+                            println!("{:?}", state.input_buffer.as_str());
+                        }else{
+                            return Inhibit(true);
+                        }
+                    }}
                     Inhibit(false)
                 }));
 
-                {let button = gtk::Button::new_with_label("Click me!");
+                let button = gtk::Button::new_with_label("Click me!");
                     paned.add1(&button);
-                }
 
                 let image_area = gtk::GLArea::new();
                     paned.add2(&image_area);
