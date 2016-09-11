@@ -17,7 +17,7 @@ pub use gdk::{
  * &[AltModified(char), Exact("swap-color"), Color, Color]
  */
 
-#[derive(PartialEq)]
+#[derive(Clone,Debug,PartialEq)]
 pub enum Input {
     Char(Keycode,Mod),
     Integer,
@@ -26,6 +26,7 @@ pub enum Input {
     Exact(String)
 }
 
+#[derive(Clone,Debug,PartialEq)]
 pub enum Arg {
     String(String),
     Integer(isize),
@@ -41,7 +42,7 @@ impl Arg {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy,Clone,Debug,Eq,PartialEq)]
 pub enum Command {
     ExportPng,
     Print,
@@ -50,13 +51,15 @@ pub enum Command {
     ZoomDiv2,
 }
 
+pub type Commands = Vec<(Vec<Input>,Command)>;
+
 pub const META_X: Input = Input::Char(keys::x,LALTMOD);
 
 #[allow(non_snake_case)]
-pub fn get_commands() -> Vec<(Vec<Input>, Command)> {
+pub fn get_commands() -> Commands {
     let NOMOD = Mod::empty();
 
-    vec![
+    vec![//TODO: Consider alternative structuring: This looks like a trie and could e.g. be implemented using HashMap<Vec<Input>,RequiresMoreInput|Command> giving approximately O(1) lookup
         (
             vec![Input::Char(keys::s,LCTRLMOD)],
             Command::ExportPng
@@ -88,6 +91,7 @@ pub fn get_commands() -> Vec<(Vec<Input>, Command)> {
     ]
 }
 
+#[derive(Copy,Clone,Debug,Eq,PartialEq)]
 pub enum InterpretErr {
     NoValidCommand,
     RequiresMoreInput
@@ -102,7 +106,7 @@ pub fn interpret_input(input: &[Input],
                        commands: &[(Vec<Input>, Command)])
                                    -> Result<Command, InterpretErr> {
     let mut has_match = false;
-    for &(ref inputstack, command) in commands {
+    for &(ref inputstack, command) in commands {//TODO: This is the trie-like lookup. See notes in get_commands
         if input.len() <= inputstack.len() &&
             input == &inputstack[0..input.len()] {
             has_match = true;
@@ -117,6 +121,7 @@ pub fn interpret_input(input: &[Input],
     })
 }
 
+#[derive(Copy,Clone,Debug,Eq,PartialEq)]
 pub enum CommandResult {
     Quit,
     RequiresMoreInput,
