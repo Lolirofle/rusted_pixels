@@ -130,6 +130,7 @@ pub mod image{
                 gl_ext::Vertex{position: [ 1.0, 1.0],tex_coords: [1.0,1.0]},
                 gl_ext::Vertex{position: [ 1.0,-1.0],tex_coords: [1.0,0.0]},
             ]).unwrap();
+            let vertices_draw = glium::VertexBuffer::empty_persistent(&display,1).unwrap();
             let indices = glium::IndexBuffer::new(
                 &display,
                 glium::index::PrimitiveType::TriangleStrip,
@@ -138,16 +139,22 @@ pub mod image{
             //GL shaders
             let program = program!(&display,
                 140 => {
-                    vertex  : include_str!(  "vertex.140.glsl"),
-                    fragment: include_str!("fragment.140.glsl"),
+                    vertex  : include_str!("shaders/image_area.140.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.140.frag.glsl"),
                 },
                 110 => {
-                    vertex  : include_str!(  "vertex.110.glsl"),
-                    fragment: include_str!("fragment.110.glsl"),
+                    vertex  : include_str!("shaders/image_area.110.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.110.frag.glsl"),
                 },
                 100 => {
-                    vertex  : include_str!(  "vertex.100.glsl"),
-                    fragment: include_str!("fragment.100.glsl"),
+                    vertex  : include_str!("shaders/image_area.100.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.100.frag.glsl"),
+                },
+            ).unwrap();
+            let program_draw = program!(&display,
+                140 => {
+                    vertex  : include_str!("shaders/draw.140.vert.glsl"),
+                    fragment: include_str!("shaders/draw.140.frag.glsl"),
                 },
             ).unwrap();
 
@@ -157,15 +164,17 @@ pub mod image{
                 state.images[0].clone().into_raw(),//TODO
                 image_dimensions
             );
-            let texture = glium::texture::SrgbTexture2d::new(&display,image).unwrap();
+            let texture = glium::texture::Texture2d::new(&display,image).unwrap();
 
             let mut gl_state = gl_state.borrow_mut();
             *gl_state = Some(gl_ext::ImageState{
-                display : display,
-                vertices: vertices,
-                indices : indices,
-                program : program,
-                texture : texture,
+                display                 : display,
+                vertices                : vertices,
+                vertices_draw           : vertices_draw,
+                indices                 : indices,
+                program                 : program,
+                drawing_program         : program_draw,
+                texture                 : texture,
                 translation_previous_pos: None,
                 dimensions: (1.0,1.0),
             });
@@ -239,6 +248,33 @@ pub mod image{
             Inhibit(false)
         }));
 
+        //When pressing mouse buttons
+        widget.add_events(gdk_sys::GDK_ALL_EVENTS_MASK.bits() as i32);
+        widget.connect_button_press_event(move_fn_with_clones!(gl_state; |_,event|{
+            let mut gl_state = gl_state.borrow_mut();
+            if let Some(gl_state) = gl_state.as_mut(){
+                if event.get_state().contains(gdk::SHIFT_MASK){
+                    use glium::index::*;
+                    use glium::uniforms::*;
+
+                    gl_state.vertices_draw.write(&[gl_ext::DrawingVertex{
+                        position: [1.0 , 1.0],
+                        color   : [1.0 , 0.5 , 0.5 , 1.0],
+                    }]);
+
+                    let mut target = gl_state.texture.as_surface();
+                        target.draw(
+                            &gl_state.vertices_draw,
+                            NoIndices(PrimitiveType::Points),
+                            &gl_state.drawing_program,
+                            &EmptyUniforms,
+                            &Default::default()
+                        ).unwrap();
+                }
+            }
+            Inhibit(false)
+        }));
+
         //When releasing mouse buttons
         widget.add_events(gdk_sys::GDK_ALL_EVENTS_MASK.bits() as i32);
         widget.connect_button_release_event(move_fn_with_clones!(gl_state; |_,event|{
@@ -278,6 +314,7 @@ pub mod image{
         }));
     }
 
+    //TODO: Find everything that's the same as image_area and factor it out
     pub fn preview_area(widget: &gtk::GLArea,gl_state: &PreviewStateType,state: &super::StateType){
         //Initialization of draw area
         widget.connect_realize(move_fn_with_clones!(state,gl_state; |widget|{
@@ -308,16 +345,16 @@ pub mod image{
             //GL shaders
             let program = program!(&display,
                 140 => {
-                    vertex  : include_str!(  "vertex.140.glsl"),
-                    fragment: include_str!("fragment.140.glsl"),
+                    vertex  : include_str!("shaders/image_area.140.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.140.frag.glsl"),
                 },
                 110 => {
-                    vertex  : include_str!(  "vertex.110.glsl"),
-                    fragment: include_str!("fragment.110.glsl"),
+                    vertex  : include_str!("shaders/image_area.110.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.110.frag.glsl"),
                 },
                 100 => {
-                    vertex  : include_str!(  "vertex.100.glsl"),
-                    fragment: include_str!("fragment.100.glsl"),
+                    vertex  : include_str!("shaders/image_area.100.vert.glsl"),
+                    fragment: include_str!("shaders/image_area.100.frag.glsl"),
                 },
             ).unwrap();
 
