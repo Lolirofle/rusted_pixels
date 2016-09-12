@@ -248,33 +248,6 @@ pub mod image{
             Inhibit(false)
         }));
 
-        //When pressing mouse buttons
-        widget.add_events(gdk_sys::GDK_ALL_EVENTS_MASK.bits() as i32);
-        widget.connect_button_press_event(move_fn_with_clones!(gl_state; |_,event|{
-            let mut gl_state = gl_state.borrow_mut();
-            if let Some(gl_state) = gl_state.as_mut(){
-                if event.get_state().contains(gdk::SHIFT_MASK){
-                    use glium::index::*;
-                    use glium::uniforms::*;
-
-                    gl_state.vertices_draw.write(&[gl_ext::DrawingVertex{
-                        position: [1.0 , 1.0],
-                        color   : [1.0 , 0.5 , 0.5 , 1.0],
-                    }]);
-
-                    let mut target = gl_state.texture.as_surface();
-                        target.draw(
-                            &gl_state.vertices_draw,
-                            NoIndices(PrimitiveType::Points),
-                            &gl_state.drawing_program,
-                            &EmptyUniforms,
-                            &Default::default()
-                        ).unwrap();
-                }
-            }
-            Inhibit(false)
-        }));
-
         //When releasing mouse buttons
         widget.add_events(gdk_sys::GDK_ALL_EVENTS_MASK.bits() as i32);
         widget.connect_button_release_event(move_fn_with_clones!(gl_state; |_,event|{
@@ -289,24 +262,54 @@ pub mod image{
 
         //When moving mouse cursor
         widget.connect_motion_notify_event(move_fn_with_clones!(state,gl_state; |_,event|{
-            let mut state = state.borrow_mut();
-            let mut gl_state = gl_state.borrow_mut();
-            if let Some(gl_state) = gl_state.as_mut(){
-                if event.get_state().contains(gdk::BUTTON1_MASK){
-                    let pos = event.get_position();
-                    let pos = (pos.0 as f32,pos.1 as f32);
+            if event.get_state().contains(gdk::BUTTON1_MASK){
+                //Translation
+                if event.get_state().contains(gdk::SHIFT_MASK){
+                    let mut state = state.borrow_mut();
+                    let mut gl_state = gl_state.borrow_mut();
+                    if let Some(gl_state) = gl_state.as_mut(){
+                        let pos = event.get_position();
+                        let pos = (pos.0 as f32,pos.1 as f32);
 
-                    match &mut gl_state.translation_previous_pos{
-                        &mut Some(ref mut previous_pos) => {
-                            state.translation = [
-                                state.translation[0] + pos.0-previous_pos.0,
-                                state.translation[1] + pos.1-previous_pos.1
-                            ];
-                            *previous_pos = (pos.0,pos.1);
-                        },
-                        option => {
-                            *option = Some(pos);
+                        match &mut gl_state.translation_previous_pos{
+                            &mut Some(ref mut previous_pos) => {
+                                state.translation = [
+                                    state.translation[0] + pos.0-previous_pos.0,
+                                    state.translation[1] + pos.1-previous_pos.1
+                                ];
+                                *previous_pos = (pos.0,pos.1);
+                            },
+                            option => {
+                                *option = Some(pos);
+                            }
                         }
+                    }
+                }else{//Drawing
+                    use glium::index::*;
+                    use glium::uniforms::*;
+
+                    let state = state.borrow();
+                    let mut gl_state = gl_state.borrow_mut();
+                    if let Some(gl_state) = gl_state.as_mut(){
+                        let pos = event.get_position();
+                        let pos = (pos.0 as f32,pos.1 as f32);
+                        let pos = ::window_to_gl_pos(pos,gl_state,&*state);
+
+                        //Prepare vertex data
+                        gl_state.vertices_draw.write(&[gl_ext::DrawingVertex{
+                            position: [pos.0 , pos.1],
+                            color   : [1.0 , 0.5 , 0.5 , 1.0],
+                        }]);
+
+                        //Draw to texture
+                        let mut target = gl_state.texture.as_surface();
+                            target.draw(
+                                &gl_state.vertices_draw,
+                                NoIndices(PrimitiveType::Points),
+                                &gl_state.drawing_program,
+                                &EmptyUniforms,
+                                &Default::default()
+                            ).unwrap();
                     }
                 }
             }

@@ -115,7 +115,20 @@ fn window_to_image_pos(pos: (f32,f32),gl_state: &gl_ext::ImageState,state: &Stat
     );
 
     (
-        (pos.0 as f32-state.translation[0]-((gl_state.dimensions.0-tex_w*state.zoom)/2.0))/state.zoom,
-        (pos.1 as f32-state.translation[1]-((gl_state.dimensions.1-tex_h*state.zoom)/2.0))/state.zoom
+        (pos.0 as f32-state.translation[0]-(gl_state.dimensions.0-tex_w*state.zoom)/2.0)/state.zoom,
+        (pos.1 as f32-state.translation[1]-(gl_state.dimensions.1-tex_h*state.zoom)/2.0)/state.zoom
+    )
+}
+
+fn window_to_gl_pos(pos: (f32,f32),gl_state: &gl_ext::ImageState,state: &State) -> (f32,f32){
+    let (tex_w,tex_h) = (
+        gl_state.texture.get_width() as f32,
+        gl_state.texture.get_height().unwrap() as f32
+    );
+
+    //±(window_to_image_pos(x,y)/(tex_dim/2.0) - 1.0)
+    (
+         ((pos.0 as f32 - state.translation[0])*2.0 - gl_state.dimensions.0)/tex_w/state.zoom,
+        -((pos.1 as f32 - state.translation[1])*2.0 - gl_state.dimensions.1)/tex_h/state.zoom,
     )
 }
