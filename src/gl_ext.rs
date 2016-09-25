@@ -1,9 +1,9 @@
 use glium;
 
-use glium_ext;
+use glium_gtk;
 
 pub struct ImageState{
-    pub display                 : glium_ext::GtkFacade,
+    pub display                 : glium_gtk::GtkFacade,
     pub vertices                : glium::VertexBuffer<Vertex>,
     pub vertices_draw           : glium::VertexBuffer<DrawingVertex>,
     pub indices                 : glium::IndexBuffer<u16>,

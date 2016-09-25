@@ -90,6 +90,21 @@ pub fn command_input(widget: &gtk::TextView){
     });
 }
 
+pub fn color_chooser(widget: &gtk::Grid,state: &StateType){
+    let state2 = state.clone();
+    let state2 = state2.borrow();
+    for &color in state2.current_palette().into_iter(){
+        let button = gtk::Button::new();
+            widget.add(&button);
+        let s = gtk::ColorButton::new_with_rgba(&color.to_gdk());
+            button.add(&s);//TODO: Temporary solution for drawing the background color
+        button.connect_clicked(move_fn_with_clones!(state; |_|{
+            let mut state = state.borrow_mut();
+            state.current_color = color;
+        }));
+    }
+}
+
 pub mod image{
     use core::cell::RefCell;
     use gdk;
@@ -100,24 +115,25 @@ pub mod image{
     use gtk::prelude::*;
     use std::rc::Rc;
 
+    use color::Color;
     use gl_ext;
-    use glium_ext;
+    use glium_gtk;
 
     pub type ImageStateType = Rc<RefCell<Option<gl_ext::ImageState>>>;
 
     /**
      * Implements an GLArea to be an image area
      */
-    pub fn image_area(widget: &gtk::GLArea,gl_state: &ImageStateType,state: &super::StateType){
+    pub fn image_area(widget: &gtk::GLArea,preview_widget: &gtk::GLArea,gl_state: &ImageStateType,state: &super::StateType){
         //Initialization of draw area
         widget.connect_realize(move_fn_with_clones!(state,gl_state; |widget|{
             widget.make_current();
 
             //Wrapper struct for glium
-            let display = glium_ext::GtkFacade{
+            let display = glium_gtk::GtkFacade{
                 context: unsafe{
                     glium::backend::Context::new::<_,()>(
-                        glium_ext::GtkBackend{gl_area: widget.clone()},
+                        glium_gtk::GtkGLAreaBackend{gl_area: widget.clone()},
                         true,
                         Default::default()
                     )
@@ -197,7 +213,7 @@ pub mod image{
         }));
 
         //Drawing of draw area for every frame
-        widget.connect_render(move_fn_with_clones!(state,gl_state; |_,context|{
+        widget.connect_render(move_fn_with_clones!(state,gl_state,preview_widget; |_,context|{
             let state = state.borrow();
             let mut gl_state = gl_state.borrow_mut();
 
@@ -233,6 +249,8 @@ pub mod image{
                             },
                             &Default::default()
                         ).unwrap();
+
+                    preview_widget.queue_render();
                 }
 
                 //Image area
@@ -302,7 +320,7 @@ pub mod image{
         }));
 
         //When moving mouse cursor
-        widget.connect_motion_notify_event(move_fn_with_clones!(state,gl_state; |_,event|{
+        widget.connect_motion_notify_event(move_fn_with_clones!(state,gl_state; |widget,event|{
             if event.get_state().contains(gdk::BUTTON1_MASK){
                 //Translation
                 if event.get_state().contains(gdk::SHIFT_MASK){
@@ -329,21 +347,38 @@ pub mod image{
                     let mut gl_state = gl_state.borrow_mut();
                     if let Some(gl_state) = gl_state.as_mut(){
                         let pos = event.get_position();
-                        let image_pos = ::window_to_image_pos(pos,gl_state,&*state,);
-                        let image_posi = [image_pos.0 as i32 , image_pos.1 as i32];
-                        let gl_pos = ::window_to_gl_pos(pos,gl_state,&state);
-                        let gl_pos = [gl_pos.0 as f32 , gl_pos.1 as f32];
+                        if pos.0>=0.0 && (pos.0 as i32)<widget.get_allocated_width()
+                        && pos.1>=0.0 && (pos.1 as i32)<widget.get_allocated_height()
+                        {
+                            let image_pos = ::window_to_image_pos(pos,gl_state,&*state,);
+                            let image_posi = [image_pos.0 as i32 , image_pos.1 as i32];
+                            let gl_pos = ::window_to_gl_pos(pos,gl_state,&state);
+                            let gl_pos = [gl_pos.0 as f32 , gl_pos.1 as f32];
 
-                        //Avoid pushing points for the same pixel on the image
-                        if image_posi!=gl_state.mouse_image_previous_pos{
-                            gl_state.mouse_image_previous_pos = image_posi;
+                            //Avoid pushing points for the same pixel on the image
+                            if image_posi!=gl_state.mouse_image_previous_pos{
+                                gl_state.mouse_image_previous_pos = image_posi;
 
-                            if image_posi[0]>=0 && image_posi[0]<gl_state.texture.get_width() as i32
-                            && image_posi[1]>=0 && image_posi[1]<gl_state.texture.get_height().unwrap() as i32{
-                                gl_state.draw_point_buffer.push(gl_ext::DrawingVertex{
-                                    position: gl_pos,
-                                    color   : [1.0 , 0.5 , 0.5 , 1.0],
-                                });
+                                if image_posi[0]>=0 && image_posi[0]<gl_state.texture.get_width() as i32
+                                && image_posi[1]>=0 && image_posi[1]<gl_state.texture.get_height().unwrap() as i32{
+                                    gl_state.draw_point_buffer.push(gl_ext::DrawingVertex{
+                                        position: gl_pos,
+                                        color: match state.current_color{
+                                            Color::RGB(r,g,b) => [
+                                                r as f32/255.0,
+                                                g as f32/255.0,
+                                                b as f32/255.0,
+                                                1.0,
+                                            ],
+                                            Color::RGBA(r,g,b,a) => [
+                                                r as f32/255.0,
+                                                g as f32/255.0,
+                                                b as f32/255.0,
+                                                a as f32/255.0,
+                                            ]
+                                        },
+                                    });
+                                }
                             }
                         }
                     }
@@ -356,18 +391,20 @@ pub mod image{
     //TODO: Find everything that's the same as image_area and factor it out
     //TODO: Context sharing with image area
     pub fn preview_area(widget: &gtk::GLArea,image_area: &gtk::GLArea,gl_state: &ImageStateType){
+        widget.set_auto_render(false);
+
         //Initialization of GL context
         widget.connect_create_context(move_fn_with_clones!(image_area; |_|{
             image_area.get_context().unwrap()
         }));
 
         //Drawing of draw area for every frame
-        widget.connect_render(move_fn_with_clones!(gl_state; |_,context|{
+        widget.connect_render(move_fn_with_clones!(gl_state; |widget,context|{
             let gl_state = gl_state.borrow();
             if let Some(gl_state) = gl_state.as_ref(){
                 context.make_current();
 
-                let mut target = gl_state.display.draw();
+                let mut target = gl_state.display.draw_with_dimensions((widget.get_allocated_width() as u32,widget.get_allocated_height() as u32));
                     let (w,h) = target.get_dimensions();
                     let (tex_w,tex_h) = (
                         gl_state.texture.get_width() as f64,

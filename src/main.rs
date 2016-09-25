@@ -13,7 +13,7 @@ extern crate shared_library;
 #[macro_use]mod macros;
 mod color;
 mod gl_ext;
-mod glium_ext;
+mod glium_gtk;
 mod image_ext;
 mod input;
 mod state;
@@ -83,17 +83,19 @@ pub fn main() {
                 widget_impl::input_system(&vert_layout,&state,input::get_commands());
 
                 let image_area = gtk::GLArea::new();
+                let preview_area = gtk::GLArea::new();
                     paned.add2(&image_area);
-                    widget_impl::image::image_area(&image_area,&gl_state,&state);
+                    widget_impl::image::image_area(&image_area,&preview_area,&gl_state,&state);
 
                 let split_left = gtk::Box::new(gtk::Orientation::Vertical,0);
                     paned.add1(&split_left);
 
-                    let button = gtk::Button::new_with_label("Click me!");
-                        split_left.pack_start(&button,false,true,2);
+                    let grid = gtk::Grid::new();
+                        split_left.pack_start(&grid,false,true,2);
+                        widget_impl::color_chooser(&grid,&state);
 
-                    let preview_area = gtk::GLArea::new();
-                        widget_impl::image::preview_area(&preview_area,&image_area,&gl_state);
+
+                    widget_impl::image::preview_area(&preview_area,&image_area,&gl_state);
 
             let command_input = gtk::TextView::new();
                 vert_layout.pack_end(&command_input,false,false,0);

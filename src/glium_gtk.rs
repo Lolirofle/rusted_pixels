@@ -2,16 +2,17 @@ use epoxy;
 use glium;
 use gtk;
 use gtk::prelude::*;
+use std::ops;
 use std::os::raw::c_void;
 use std::rc::Rc;
 
-pub struct GtkBackend{
+pub struct GtkGLAreaBackend{
     pub gl_area: gtk::GLArea,
 }
 
-unsafe impl glium::backend::Backend for GtkBackend{
+unsafe impl glium::backend::Backend for GtkGLAreaBackend{
     fn swap_buffers(&self) -> Result<(),glium::SwapBuffersError>{
-        self.gl_area.queue_render();//TODO: Is this neccessary?
+        self.gl_area.queue_render();
         Ok(())
     }
 
@@ -47,6 +48,19 @@ impl glium::backend::Facade for GtkFacade{
 
 impl GtkFacade{
     pub fn draw(&self) -> glium::Frame{
-        glium::Frame::new(self.context.clone(),self.context.get_framebuffer_dimensions())
+        glium::Frame::new(self.context.clone(),self.get_framebuffer_dimensions())
+    }
+
+    pub fn draw_with_dimensions(&self,dims: (u32,u32)) -> glium::Frame{
+        glium::Frame::new(self.context.clone(),dims)
+    }
+}
+
+impl ops::Deref for GtkFacade{
+    type Target = glium::backend::Context;
+
+    #[inline]
+    fn deref(&self) -> &glium::backend::Context{
+        &self.context
     }
 }
