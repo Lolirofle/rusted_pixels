@@ -10,17 +10,10 @@ pub struct ImageState{
     pub program                 : glium::program::Program,
     pub drawing_program         : glium::program::Program,
     pub texture                 : glium::texture::Texture2d, //The image as a texture
-    pub translation_previous_pos: Option<(f32,f32)>, //Used for retrieving translation
-    pub dimensions              : (f32,f32)//Dimensions of image area
-}
-
-pub struct PreviewState{
-    pub display : glium_ext::GtkFacade,
-    pub vertices: glium::VertexBuffer<Vertex>,
-    pub indices : glium::IndexBuffer<u16>,
-    pub program : glium::program::Program,
-    pub texture : glium::texture::SrgbTexture2d, //The image as a texture
-    pub dimensions: (f32,f32)//Dimensions of image area
+    pub translation_previous_pos: Option<(f64,f64)>, //Used for retrieving translation
+    pub dimensions              : (f64,f64),//Dimensions of image area
+    pub draw_point_buffer       : Vec<DrawingVertex>,
+    pub mouse_image_previous_pos: [i32; 2],
 }
 
 #[derive(Copy,Clone)]

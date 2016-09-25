@@ -54,9 +54,8 @@ pub fn main() {
         });
 
         //Data initialization
-        let gl_state         = Rc::new(RefCell::new(None));
-        let gl_state_preview = Rc::new(RefCell::new(None));
-        let state            = Rc::new(RefCell::new(State{
+        let gl_state = Rc::new(RefCell::new(None));
+        let state    = Rc::new(RefCell::new(State{
             images: vec![
                 image::load(
                     io::BufReader::new(fs::File::open("test.png").unwrap()),
@@ -81,6 +80,11 @@ pub fn main() {
 
             let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
                 vert_layout.pack_start(&paned,true,true,0);
+                widget_impl::input_system(&vert_layout,&state,input::get_commands());
+
+                let image_area = gtk::GLArea::new();
+                    paned.add2(&image_area);
+                    widget_impl::image::image_area(&image_area,&gl_state,&state);
 
                 let split_left = gtk::Box::new(gtk::Orientation::Vertical,0);
                     paned.add1(&split_left);
@@ -89,46 +93,57 @@ pub fn main() {
                         split_left.pack_start(&button,false,true,2);
 
                     let preview_area = gtk::GLArea::new();
-                        split_left.pack_end(&preview_area,true,true,0);
-                        widget_impl::image::preview_area(&preview_area,&gl_state_preview,&state);
-
-                let image_area = gtk::GLArea::new();
-                    paned.add2(&image_area);
-                    widget_impl::image::image_area(&image_area,&gl_state,&state);
-                    widget_impl::input_system(&image_area,&state,input::get_commands());
+                        widget_impl::image::preview_area(&preview_area,&image_area,&gl_state);
 
             let command_input = gtk::TextView::new();
                 vert_layout.pack_end(&command_input,false,false,0);
                 widget_impl::command_input(&command_input);
 
         window.show_all();
+
+        split_left.pack_end(&preview_area,true,true,0);
+        preview_area.show();
+
         gtk::main();
     }else{
         println!("Failed to initialize GTK.");
     }
 }
 
-fn window_to_image_pos(pos: (f32,f32),gl_state: &gl_ext::ImageState,state: &State) -> (f32,f32){
+fn window_to_image_pos(pos: (f64,f64),gl_state: &gl_ext::ImageState,state: &State) -> (f64,f64){
     let (tex_w,tex_h) = (
-        gl_state.texture.get_width() as f32,
-        gl_state.texture.get_height().unwrap() as f32
+        gl_state.texture.get_width() as f64,
+        gl_state.texture.get_height().unwrap() as f64
     );
 
     (
-        (pos.0 as f32-state.translation[0]-(gl_state.dimensions.0-tex_w*state.zoom)/2.0)/state.zoom,
-        (pos.1 as f32-state.translation[1]-(gl_state.dimensions.1-tex_h*state.zoom)/2.0)/state.zoom
+        (pos.0 - state.translation[0]-(gl_state.dimensions.0-tex_w*state.zoom)/2.0)/state.zoom,
+        (pos.1 - state.translation[1]-(gl_state.dimensions.1-tex_h*state.zoom)/2.0)/state.zoom
     )
 }
 
-fn window_to_gl_pos(pos: (f32,f32),gl_state: &gl_ext::ImageState,state: &State) -> (f32,f32){
+fn image_to_gl_pos(pos: (f64,f64),gl_state: &gl_ext::ImageState) -> (f64,f64){
     let (tex_w,tex_h) = (
-        gl_state.texture.get_width() as f32,
-        gl_state.texture.get_height().unwrap() as f32
+        gl_state.texture.get_width() as f64,
+        gl_state.texture.get_height().unwrap() as f64
+    );
+
+    (
+         (pos.0/(tex_w/2.0) - 1.0),
+        -(pos.1/(tex_h/2.0) - 1.0),
+    )
+}
+
+
+fn window_to_gl_pos(pos: (f64,f64),gl_state: &gl_ext::ImageState,state: &State) -> (f64,f64){
+    let (tex_w,tex_h) = (
+        gl_state.texture.get_width() as f64,
+        gl_state.texture.get_height().unwrap() as f64
     );
 
     //±(window_to_image_pos(x,y)/(tex_dim/2.0) - 1.0)
     (
-         ((pos.0 as f32 - state.translation[0])*2.0 - gl_state.dimensions.0)/tex_w/state.zoom,
-        -((pos.1 as f32 - state.translation[1])*2.0 - gl_state.dimensions.1)/tex_h/state.zoom,
+         ((pos.0 - state.translation[0])*2.0 - gl_state.dimensions.0)/tex_w/state.zoom,
+        -((pos.1 - state.translation[1])*2.0 - gl_state.dimensions.1)/tex_h/state.zoom,
     )
 }

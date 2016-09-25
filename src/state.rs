@@ -12,8 +12,8 @@ pub struct State {
     pub palettes: Vec<Color>,//TODO: Multiple palettes
     pub input: Vec<Input>,
     pub args: Vec<Arg>,
-    pub zoom: f32,
-    pub translation: [f32; 2],
+    pub zoom: f64,
+    pub translation: [f64; 2],
 	pub input_buffer: String,
 }
 
