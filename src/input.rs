@@ -1,6 +1,7 @@
 use color::Color;
 use image_ext;
 use state::State;
+use util;
 
 pub use gdk::enums::key as keys;
 pub use gdk::enums::key::Key as Keycode;
@@ -40,6 +41,13 @@ impl Arg {
         }
         panic!("Commands misconfigured. Expected `String` on stack.");
     }
+
+    pub fn coerce_color(self) -> Color {
+        if let Arg::Color(color) = self {
+            return color;
+        }
+        panic!("Commands misconfigured. Expected `Color` on stack.");
+    }
 }
 
 #[derive(Copy,Clone,Debug,Eq,PartialEq)]
@@ -47,6 +55,7 @@ pub enum Command {
     ExportPng,
     Print,
     Quit,
+    SetColor,
     ZoomMult2,
     ZoomDiv2,
 }
@@ -64,7 +73,7 @@ pub fn get_commands() -> Commands {
             vec![Input::Char(keys::s,LCTRLMOD)],
             Command::ExportPng
         ),(
-            vec![META_X , Input::Exact(String::from("export-png"))],
+            vec![META_X , Input::Exact(String::from("export-png")) , Input::String],
             Command::ExportPng
         ),(
             vec![Input::Char(keys::q,LCTRLMOD)],
@@ -75,6 +84,9 @@ pub fn get_commands() -> Commands {
         ),(
             vec![META_X , Input::Exact(String::from("print")) , Input::String],
             Command::Print
+        ),(
+            vec![META_X , Input::Exact(String::from("set-color")) , Input::Color],
+            Command::SetColor
         ),(
             vec![Input::Char(keys::plus,NOMOD)],
             Command::ZoomMult2
@@ -147,7 +159,10 @@ pub fn execute_command(state: &mut State,
     match interpret_input(&state.input, commands) {
         Ok(command) => match command {
             Command::ExportPng => {
-                image_ext::save_png_image(&state.images[0],"tmp/test_out.png").unwrap();
+                let out = state.args.pop()
+                    .unwrap_or(Arg::String(String::from("tmp/test_out.png")))
+                    .coerce_string();
+                image_ext::save_png_image(&state.images[0],out).unwrap();
                 println!("exported png");
                 clean_input_and_args(state);
                 CommandResult::Success
@@ -159,6 +174,13 @@ pub fn execute_command(state: &mut State,
             Command::Print => {
                 println!("{}", state.args.pop().unwrap().coerce_string());
                 clean_input_and_args(state);
+                CommandResult::Success
+            },
+            Command::SetColor => {
+                let color = state.args.pop().unwrap().coerce_color();
+                state.current_color = color;
+                clean_input_and_args(state);
+                println!("set color");
                 CommandResult::Success
             },
             Command::ZoomMult2 => {
@@ -203,13 +225,18 @@ pub fn parse_input(input: &str) -> (Input, Option<Arg>) {
     if let Ok(integer) = input.parse::<isize>() {
         (Input::Integer, Some(Arg::Integer(integer)))
     }
-    else if input.len() > 1 &&
-        input.starts_with('\'') &&
-        input.as_bytes()[input.len() - 1] == b'\'' {
-            (Input::String, Some(Arg::String(
-                input[1..(input.len() - 1)].to_string())))
+    else if input.len() > 1
+        && input.starts_with('\'')
+        && input.as_bytes()[input.len() - 1] == b'\'' {
+            // remove quotation marks
+            let parsed_string = input[1..(input.len() - 1)].to_string();
+            (Input::String, Some(Arg::String(parsed_string)))
         }
+    else if let Some(color) = util::parse_color(input) {
+        (Input::Color, Some(Arg::Color(color)))
+    }
     else {
         (Input::Exact(input.to_string()), None)
     }
 }
+

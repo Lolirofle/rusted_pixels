@@ -17,6 +17,7 @@ mod glium_gtk;
 mod image_ext;
 mod input;
 mod state;
+mod util;
 mod widget_impl;
 mod x11_keymap;
 
